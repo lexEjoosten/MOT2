@@ -5,16 +5,16 @@
  
  This toolkit needs to be able to take account of, alongside the standard fare for MOT's:
  
- Multi-level systems, including repump.
+ - Multi-level systems, including repump.
  
-Mid-simulation Changing environmental conditions, such as a changing magnetic field, or a changing incident light.
+ - Mid-simulation Changing environmental conditions, such as a changing magnetic field, or a changing incident light.
 
-Mid-simulation addition of atoms.
+ - Mid-simulation addition of atoms.
 
-Multiple-species of atoms.
+ - Multiple-species of atoms.
 
-Interactions between atoms (radiation pressure).
+ - Interactions between atoms (radiation pressure).
 
-Stochastic heating from spontaneous emission of photons.
+ - Stochastic heating from spontaneous emission of photons.
 
-And More.
+ - And More.
