@@ -95,8 +95,8 @@ def RatesbyBeam(u,l,Pa,En,Rb):
 
 
 #function for creating a gaussian intensity profile
-def cgaussianprofile(Peakint,Gradius,Cradius, devic=vr.def_device):
-    a=(int(2*Cradius/0.0001)+1)
+def cgaussianprofile(Peakint,Gradius,Cradius, devic=vr.def_device,size=0.0001):
+    a=(int(2*Cradius/size)+1)
     profilex=np.zeros((a,1))
     profilex[:,0]=np.linspace(-Cradius,Cradius,a)
     profiley=np.zeros((1,a))
