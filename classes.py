@@ -1,3 +1,4 @@
+from pyrsistent import s
 import variables as vr
 import functions as fn
 import torch
@@ -22,6 +23,10 @@ class Transition:
         self.DR=DR
         self.LL=LL
         self.UL=UL
+        if (LL in particle.relevant_levels)!=True:
+            particle.relevant_levels.append(LL)
+        if (UL in particle.relevant_levels)!=True:
+            particle.relevant_levels.append(UL)
         self.Ml=int(LL[LL.index("F")+1])
         self.Mu=int(UL[UL.index("F")+1])
         self.Energy=particle.levels[UL]-particle.levels[LL]
@@ -31,10 +36,28 @@ class species:
     def __init__(self, mass, energy_levels, isotope, nuclear_spin):
         self.mass=mass
         self.levels=energy_levels
+        self.relevant_levels=[]
         self.isotope=isotope
         self.nspin=nuclear_spin
         self.dtype='species_indicator'
+    
+    def createstructure(self):
+        self.lowestlevel=None
+        self.lvlsize=0
+        self.slicestart={}
+        self.sliceend={}
+        for i in self.relevant_levels:
 
+            if self.lowestlevel==None:
+                self.lowestlevel=i
+            elif self.levels[i]<self.levels[self.lowestlevel]:
+                self.lowestlevel=i
+            self.slicestart[i]=self.lvlsize
+            self.lvlsize+=2*int(i[i.index("F")+1])+1
+            self.sliceend[i]=self.lvlsize
+
+
+        
 
 class tens:
     #this class defines some default tensors which will be used in testing
@@ -121,14 +144,21 @@ class laserbeam:
         R=R[P]
         P=self.profile[Px,Py]
         I[R]=P.to(torch.get_default_dtype())
-        
+
 
         return I
     
 
+#particle creation, and addition can only be done with single-specied particles, Im not intending to change this anytime soon. 
+#The way to include multiple species, is essentially to create seperate particles classes, with completely seperate arrays. 
+#This would solve the tensor shape issues which are created by having species with different level-structures somehow being
+# included in the same tensor. 
+# (concatenating a tensor of size NxL with a tensor of size MxL is possible, 
+# concatonating a tensor of size NxL with a tensor of size MxK is not.)
+
 
 class particles:
-    #the particles class contains the data for the particles included in the model, this data includes particle position, velocity, species, and 
+    #the particles class contains the data for the particles included in the model, this data includes particle position, velocity, species, and energy level occupations
     def create(positions,velocities,species):
         particles.x=positions
         particles.v=velocities
@@ -137,6 +167,12 @@ class particles:
             particles.type=species
         else:
             particles.type=np.array([species]).repeat(positions.shape[0])
+
+        species=particles.type[0]
+
+        particles.levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
+        particles.levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])),device=particles.x.device)
+        
 
     def createbyT(N,species,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
@@ -166,6 +202,10 @@ class particles:
             particles.type=np.array([species]).repeat(N)
         particles.x=R*particles.x
         
+        species=particles.type[0]
+
+        particles.levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
+        particles.levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])),device=particles.x.device)
         
     def add(positions,velocities,species):
         particles.x=torch.cat((particles.x,positions))
@@ -176,6 +216,14 @@ class particles:
         else:
             particles.type=np.append(particles.type,np.array([species]).repeat(positions.shape[0]))
     
+
+    
+        species=particles.type[0]
+        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
+        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+
+        particles.levels=torch.cat(particles.levels,levels)
+
     def addbyT(N,species,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
 
@@ -205,6 +253,16 @@ class particles:
         particles.x=torch.cat((particles.x,x))
         particles.v=torch.cat((particles.v,v))
         particles.type=np.append(particles.type,type)
+
+
+    
+        species=particles.type[0]
+        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
+        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+
+        particles.levels=torch.cat(particles.levels,levels)
+
+        
 
     def timestepadd(species,dt=0.00001 ,T=300,P=1e-9,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
@@ -240,3 +298,9 @@ class particles:
         particles.x=torch.cat((particles.x,x))
         particles.v=torch.cat((particles.v,v))
         particles.type=np.append(particles.type,type)
+    
+        species=particles.type[0]
+        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
+        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+
+        particles.levels=torch.cat(particles.levels,levels)
