@@ -149,82 +149,66 @@ class laserbeam:
         return I
     
 
-#particle creation, and addition can only be done with single-specied particles, Im not intending to change this anytime soon. 
-#The way to include multiple species, is essentially to create seperate particles classes, with completely seperate arrays. 
-#This would solve the tensor shape issues which are created by having species with different level-structures somehow being
-# included in the same tensor. 
-# (concatenating a tensor of size NxL with a tensor of size MxL is possible, 
-# concatonating a tensor of size NxL with a tensor of size MxK is not.)
-
+#Each particle species is its own class, this effectively means that modelling multiple particle species requires cycling through the species, this is inefficient,
+# but the operations performed on each particle species will be different as they will have different transitions. Thus I see no workaround yet.
 
 class particles:
     #the particles class contains the data for the particles included in the model, this data includes particle position, velocity, species, and energy level occupations
-    def create(positions,velocities,species):
-        particles.x=positions
-        particles.v=velocities
+    def __init__(self, species):
+        self.species=species
+    
+    
+    def create(self, positions,velocities):
+        self.x=positions
+        self.v=velocities
         #need species to be represented as a numpy array, as torch tensors cant include general pointers
-        if species.dtype==object:
-            particles.type=species
-        else:
-            particles.type=np.array([species]).repeat(positions.shape[0])
 
-        species=particles.type[0]
-
-        particles.levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
-        particles.levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])),device=particles.x.device)
         
 
-    def createbyT(N,species,T=300,R=0.01,def_device=vr.def_device):
+        self.levels=torch.zeros((positions.shape[0],self.species.lvlsize),device=self.x.device)
+        self.levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])),device=self.x.device)
+        
+
+    def createbyT(self, N,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
 
 
         #randomly distribute points over a shell at radius R. 
-        particles.x=fn.randthreevecs(N,def_device)
+        self.x=fn.randthreevecs(N,def_device)
         # Need to use the chi4 distribution as we're not interested in all the velocies in the gas chamber(which would be maxwell distribution (chi3)) but
         #  instead only those which pass te boundary, which is effusion, which must be multiplied by v_n, where v_n is the velocity into the  sphere. 
         # This also requires the modification of the direction distribution. But doing this correctly allows for a simplified insertion of particles to the model
         #
         # This mode of addition is neccesarily based off of the ideal gas model.
-        v_therm=sqrt(2*conk*T/species.mass)
+        v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
         theta=torch.arcsin(torch.sqrt(torch.zeros((N),device=def_device).uniform_()))
         
-        nx=(torch.outer(particles.x[:,2],torch.tensor([0,1,0],device=def_device))-torch.outer(particles.x[:,1],torch.tensor([0,0,1],device=def_device))).T
-        ny=(torch.outer(particles.x[:,2],torch.tensor([1,0,0],device=def_device))-torch.outer(particles.x[:,0],torch.tensor([0,0,1],device=def_device))).T
+        nx=(torch.outer(self.x[:,2],torch.tensor([0,1,0],device=def_device))-torch.outer(self.x[:,1],torch.tensor([0,0,1],device=def_device))).T
+        ny=(torch.outer(self.x[:,2],torch.tensor([1,0,0],device=def_device))-torch.outer(self.x[:,0],torch.tensor([0,0,1],device=def_device))).T
         nx=torch.divide(nx,torch.norm(nx,dim=0))
         ny=torch.divide(ny,torch.norm(ny,dim=0))
-        particles.v=(torch.tensor(vel,device=def_device)*(torch.mul(torch.cos(theta),particles.x.T)+torch.mul(torch.sin(theta),(torch.mul(torch.cos(phi),nx)+torch.mul(torch.sin(phi),ny))))).T
-        if species.dtype==object:
-            particles.type=species
-        else:
-            particles.type=np.array([species]).repeat(N)
-        particles.x=R*particles.x
+        self.v=(torch.tensor(vel,device=def_device)*(torch.mul(torch.cos(theta),self.x.T)+torch.mul(torch.sin(theta),(torch.mul(torch.cos(phi),nx)+torch.mul(torch.sin(phi),ny))))).T
         
-        species=particles.type[0]
+        self.x=R*self.x
+        
 
-        particles.levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
-        particles.levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])),device=particles.x.device)
+        self.levels=torch.zeros((N,self.species.lvlsize),device=self.x.device)
+        self.levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])),device=self.x.device)
         
-    def add(positions,velocities,species):
-        particles.x=torch.cat((particles.x,positions))
-        particles.v=torch.cat((particles.v,velocities))
+    def add(self, positions,velocities):
+        self.x=torch.cat((self.x,positions))
+        self.v=torch.cat((self.v,velocities))
         #need species to be represented as a numpy array, as torch tensors cant include general pointers
-        if species.dtype==object:
-            particles.type=np.append(particles.type,species)
-        else:
-            particles.type=np.append(particles.type,np.array([species]).repeat(positions.shape[0]))
-    
+        
+        levels=torch.zeros((positions.shape[0],self.species.lvlsize),device=self.x.device)
+        levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
 
-    
-        species=particles.type[0]
-        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
-        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+        self.levels=torch.cat((self.levels,levels))
 
-        particles.levels=torch.cat(particles.levels,levels)
-
-    def addbyT(N,species,T=300,R=0.01,def_device=vr.def_device):
+    def addbyT(self, N,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
 
 
@@ -235,7 +219,7 @@ class particles:
         # This also requires the modification of the direction distribution. But doing this correctly allows for a simplified insertion of particles to the model
         #
         # This mode of addition is neccesarily based off of the ideal gas model.
-        v_therm=sqrt(2*conk*T/species.mass)
+        v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
@@ -245,28 +229,21 @@ class particles:
         nx=torch.divide(nx,torch.norm(nx,dim=0))
         ny=torch.divide(ny,torch.norm(ny,dim=0))
         v=(torch.tensor(vel,device=def_device)*(torch.mul(torch.cos(theta),x.T)+torch.mul(torch.sin(theta),(torch.mul(torch.cos(phi),nx)+torch.mul(torch.sin(phi),ny))))).T
-        if species.dtype==object:
-            type=species
-        else:
-            type=np.array([species]).repeat(N)
+        
         x=R*x
-        particles.x=torch.cat((particles.x,x))
-        particles.v=torch.cat((particles.v,v))
-        particles.type=np.append(particles.type,type)
+        self.x=torch.cat((self.x,x))
+        self.v=torch.cat((self.v,v))
 
+        levels=torch.zeros((N,self.species.lvlsize),device=self.x.device)
+        levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
 
-    
-        species=particles.type[0]
-        levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
-        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])))
-
-        particles.levels=torch.cat(particles.levels,levels)
+        self.levels=torch.cat((self.levels,levels))
 
         
 
-    def timestepadd(species,dt=0.00001 ,T=300,P=3e-7,R=0.01,def_device=vr.def_device):
+    def timestepadd(self,dt=0.00001 ,T=300,P=3e-7,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
-        N=dt*4*pi*R**2*P/sqrt(2*pi*species.mass*conk*T)
+        N=dt*4*pi*R**2*P/sqrt(2*pi*self.species.mass*conk*T)
         Nmin=int(N)
         if (N-Nmin)>=random():
             N=Nmin+1
@@ -280,7 +257,7 @@ class particles:
         # This also requires the modification of the direction distribution. But doing this correctly allows for a simplified insertion of particles to the model
         #
         # This mode of addition is neccesarily based off of the ideal gas model.
-        v_therm=sqrt(2*conk*T/species.mass)
+        v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
@@ -290,17 +267,13 @@ class particles:
         nx=torch.divide(nx,torch.norm(nx,dim=0))
         ny=torch.divide(ny,torch.norm(ny,dim=0))
         v=(torch.tensor(vel,device=def_device)*(torch.mul(torch.cos(theta),x.T)+torch.mul(torch.sin(theta),(torch.mul(torch.cos(phi),nx)+torch.mul(torch.sin(phi),ny))))).T
-        if species.dtype==object:
-            type=species
-        else:
-            type=np.array([species]).repeat(N)
+        
         x=R*x
-        particles.x=torch.cat((particles.x,x))
-        particles.v=torch.cat((particles.v,v))
-        particles.type=np.append(particles.type,type)
+        self.x=torch.cat((self.x,x))
+        self.v=torch.cat((self.v,v))
     
-        species=particles.type[0]
-        levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
-        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+        
+        levels=torch.zeros((N,self.species.lvlsize),device=self.x.device)
+        levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
 
-        particles.levels=torch.cat(particles.levels,levels)
+        self.levels=torch.cat((self.levels,levels))
