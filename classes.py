@@ -257,14 +257,14 @@ class particles:
 
     
         species=particles.type[0]
-        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
-        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+        levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
+        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])))
 
         particles.levels=torch.cat(particles.levels,levels)
 
         
 
-    def timestepadd(species,dt=0.00001 ,T=300,P=1e-9,R=0.01,def_device=vr.def_device):
+    def timestepadd(species,dt=0.00001 ,T=300,P=3e-7,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
         N=dt*4*pi*R**2*P/sqrt(2*pi*species.mass*conk*T)
         Nmin=int(N)
@@ -300,7 +300,7 @@ class particles:
         particles.type=np.append(particles.type,type)
     
         species=particles.type[0]
-        levels=torch.zeros((positions.shape[0],species.lvlsize),device=particles.x.device)
-        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(species.lowestlevel[species.lowestlevel.index("F")+1])))
+        levels=torch.zeros((N,species.lvlsize),device=particles.x.device)
+        levels[:,species.slicestart[species.lowestlevel]:species.sliceend[species.lowestlevel]]=1/(2*int(species.lowestlevel[species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(species.lowestlevel[species.lowestlevel.index("F")+1])))
 
         particles.levels=torch.cat(particles.levels,levels)
