@@ -13,7 +13,7 @@ from scipy.stats import chi
 
 
 class Transition:  
-    def __init__(self,DR,LL,UL,particle):
+    def __init__(self,DR,LL,UL,particle, branchrat):
         #creating a transition requires the natural decay rate, the lower level, and the upper level, and finally the particle for which the transition applies
         #DR is the decay rate, given in Hz
         #LL is the lower level, a string in the "levels" dictionary of the particle
@@ -30,13 +30,16 @@ class Transition:
         self.Ml=int(LL[LL.index("F")+1])
         self.Mu=int(UL[UL.index("F")+1])
         self.Energy=particle.levels[UL]-particle.levels[LL]
-
+        self.BR=torch.zeros((2*self.Ml+1,2*self.Mu+1)).to(vr.def_device)
+        self.BR+=branchrat
+        particle.transitions.append(self)
 
 class species:
     def __init__(self, mass, energy_levels, isotope, nuclear_spin):
         self.mass=mass
         self.levels=energy_levels
         self.relevant_levels=[]
+        self.transitions=[]
         self.isotope=isotope
         self.nspin=nuclear_spin
         self.dtype='species_indicator'
@@ -68,14 +71,17 @@ class tens:
 
 
 class laserbeam:
-    def __init__(self,passes_through, direction, wavelength, profile,profilex=None,profiley=None,Cutoff=None,def_device=vr.def_device, profile_size=(0.0001,0.0001)):
+    def __init__(self,direction, wavelength, profile,passes_through=0, profilex=None,profiley=None,Cutoff=None,def_device=vr.def_device, profile_size=(0.0001,0.0001), pol=[1/3,1/3,1/3]):
         #passes_through gives one point where the beam passes through (default=[0,0,0])
         #direction gives the direction in which the beam moves
         #wavelength gives the wavelength of the light in the beam.
         #profile is given as a matrix of intensities with the center of the matrix being the center of the beam (expected type is np matrix)
         #profile is measured with grid squares of default size .1*.1 mm
         #profile indicates the beam shape and intensities, not wavelenght profile.
+        #pol indicates the polarization of the beam, it is given by (epsilon+,pi0,epsilon-)
+        
 
+        self.pol=torch.tensor(pol,device=def_device)
         self.k=2*pi/wavelength
         direction=torch.tensor(direction,device=def_device,dtype=torch.get_default_dtype())
         self.dir=torch.divide(direction,torch.norm(direction,dim=0))
@@ -156,13 +162,14 @@ class particles:
     #the particles class contains the data for the particles included in the model, this data includes particle position, velocity, species, and energy level occupations
     def __init__(self, species):
         self.species=species
+        self.N=0
     
     
     def create(self, positions,velocities):
         self.x=positions
         self.v=velocities
         #need species to be represented as a numpy array, as torch tensors cant include general pointers
-
+        self.N+=positions.shape[0]
         
 
         self.levels=torch.zeros((positions.shape[0],self.species.lvlsize),device=self.x.device)
@@ -171,21 +178,19 @@ class particles:
 
     def createbyT(self, N,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
-
-
+        self.N+=N
         #randomly distribute points over a shell at radius R. 
         self.x=fn.randthreevecs(N,def_device)
         # Need to use the chi4 distribution as we're not interested in all the velocies in the gas chamber(which would be maxwell distribution (chi3)) but
         #  instead only those which pass te boundary, which is effusion, which must be multiplied by v_n, where v_n is the velocity into the  sphere. 
         # This also requires the modification of the direction distribution. But doing this correctly allows for a simplified insertion of particles to the model
-        #
         # This mode of addition is neccesarily based off of the ideal gas model.
         v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
         theta=torch.arcsin(torch.sqrt(torch.zeros((N),device=def_device).uniform_()))
-        
+        #This performs the calcuations relative to the normal
         nx=(torch.outer(self.x[:,2],torch.tensor([0,1,0],device=def_device))-torch.outer(self.x[:,1],torch.tensor([0,0,1],device=def_device))).T
         ny=(torch.outer(self.x[:,2],torch.tensor([1,0,0],device=def_device))-torch.outer(self.x[:,0],torch.tensor([0,0,1],device=def_device))).T
         nx=torch.divide(nx,torch.norm(nx,dim=0))
@@ -201,17 +206,14 @@ class particles:
     def add(self, positions,velocities):
         self.x=torch.cat((self.x,positions))
         self.v=torch.cat((self.v,velocities))
-        #need species to be represented as a numpy array, as torch tensors cant include general pointers
-        
+        self.N+=positions.shape[0]
         levels=torch.zeros((positions.shape[0],self.species.lvlsize),device=self.x.device)
         levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
-
         self.levels=torch.cat((self.levels,levels))
 
     def addbyT(self, N,T=300,R=0.01,def_device=vr.def_device):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
-
-
+        self.N+=N
         #randomly distribute points over a shell at radius R. 
         x=fn.randthreevecs(N,def_device)
         # Need to use the chi4 distribution as we're not interested in all the velocies in the gas chamber(which would be maxwell distribution (chi3)) but
@@ -249,7 +251,7 @@ class particles:
             N=Nmin+1
         else:
             N=Nmin
-
+        self.N+=N
         #randomly distribute points over a shell at radius R. 
         x=fn.randthreevecs(N,def_device)
         # Need to use the chi4 distribution as we're not interested in all the velocies in the gas chamber(which would be maxwell distribution (chi3)) but
@@ -277,3 +279,14 @@ class particles:
         levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((N,int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
 
         self.levels=torch.cat((self.levels,levels))
+
+
+class Environment:
+    def __init__(self,pressure,lasers,temperature,B=None):
+        self.P=pressure
+        self.laserbeams=lasers
+        self.T=temperature
+        if B==None:
+            def B(x):
+                return torch.zeros(x.shape,device=x.device)
+        self.B=B

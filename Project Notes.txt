@@ -1,0 +1,8 @@
+Found website for calculating transition strengths:
+https://www.wolframcloud.com/objects/demonstrations/TransitionStrengthsOfAlkaliMetalAtoms-source.nb
+
+May try to implement this programatically, if I can find a library of calculating 3J & 6J.
+There is the pyshtools library which has wigner 3J symbols. For now I will include those manually
+
+
+the polarization rotation will still be done using the axis angle representation, as this is easiest.

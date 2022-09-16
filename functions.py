@@ -115,3 +115,99 @@ def disttobeam(point,laserbeam):
     if(len(point.shape))==1:
         point=point.unsqueeze(0)
     return torch.norm(x_0-point-torch.mul(y,(x_0-point))*y,dim=1)
+
+def AHh(x,A):
+    return (torch.matmul(x,torch.diag(tensor([A,A,-2*A],device=x.device,dtype=x.dtype))))
+
+'''
+    def Veldtun(v):
+        #finds the velocity detunement
+        kv = torch.inner(Environment.Lk,v)
+        return -kv*Environment.Kmag
+
+    def Bdtun(Ml,Mu,x):
+        #returns the B-field detunement of a particular point.
+        return 8.7941e10*torch.sqrt(torch.sum(torch.square(Environment.BaHH*x),1))*(Rubidium.gl*Ml-Rubidium.gu*Mu)
+    
+    def eploc(x):
+        #returns the local polarization vector.
+        R1=Environment.Brot(Environment.BaHH,x).unsqueeze(1).repeat(1,6,1,1)
+        epr=Environment.LpolcartR.unsqueeze(0).repeat(x.shape[0],1,1,1)
+        epc=Environment.LpolcartI.unsqueeze(0).repeat(x.shape[0],1,1,1)
+        epr=torch.matmul(R1,epr)
+        epc=torch.matmul(R1,epc)
+        ep=carttopol([epr,epc])
+        ep=ep
+        return ep
+        
+    
+        
+    def Brot(B,x):
+        #This returns the rotation vector needed to rotate the polarization of the beams onto the axis defined at the location x, by the field B.
+        u=F.normalize(torch.matmul(Tensor([[0,1,0],[-1,0,0],[0,0,0]]).to(vr.base_device).unsqueeze(0).repeat(x.shape[0],1,1),(torch.matmul(Environment.aHHassym,(B*x).transpose(0,1)).transpose(0,1)).unsqueeze(2)).squeeze())
+        W=torch.inner(Tensor([[[0,0,0],[0,0,-1],[0,1,0]],[[0,0,1],[0,0,0],[-1,0,0]],[[0,-1,0],[1,0,0],[0,0,0]]]).to(vr.base_device),u).transpose(1,2).transpose(0,1)
+
+        phi=-torch.arccos(F.normalize(x)[:,2])
+        
+        Id=Tensor([[1,0,0],[0,1,0],[0,0,1]]).to(vr.base_device).unsqueeze(0).repeat(x.shape[0],1,1)
+        
+        R=Id+(W.transpose(0,2)*torch.sin(phi)).transpose(0,2)+((torch.matmul(W,W)).transpose(0,2)*(2*torch.sin(phi/2)**2)).transpose(0,2)
+        
+        
+        
+        return R
+    
+    
+    
+    
+    
+    def fulldtun(Ml,Mu,dop,zee):
+        #this is a function which combines the previous functions
+        return (Environment.dtun-dop*Environment.Veldtun(particles.v)-zee*Environment.Bdtun(Ml,Mu,particles.x)).transpose(0,1)
+'''
+
+
+def eploc(x,Environment,def_device=vr.def_device):
+    #This function takes in a set of positions, and the environment. And returns the local polarizations of the laserbeams as measured along
+    #the quantization axis defined by the local magnetic field.
+    dirs=torch.zeros((len(Environment.laserbeams),3))
+    eps=torch.zeros((len(Environment.laserbeams),3))
+    for i in range(len(Environment.laserbeams)): 
+        dirs[i]=Environment.laserbeams[i].dir
+        eps[i]=Environment.laserbeams[i].pol
+    eps=eps.unsqueeze(-1)
+    Bloc=Environment.B(x)
+    nBloc=torch.div(Bloc,torch.linalgnorm(Bloc,dim=1).unsqueeze(1))
+    v=torch.cross(nBloc.unsqueeze(1).repeat(1,len(Environment.laserbeams),1),dirs.unsqueeze(0).repeat(nBloc.shape[0],1,1))
+    
+
+    #this calculates the sin(theta) and 1-cos(theta) factors needed for the calculation of the rotation matrix.
+    s=torch.linalgnorm(v,dim=2).unsqueeze(-1).unsqueeze(-1).repeat(1,1,3,3)
+    c=(torch.ones((Bloc.shape[0],dirs.shape[0]),device=def_device)-torch.sum(torch.mul(nBloc.unsqueeze(1).repeat(1,dirs.shape[0],1),dirs.unsqueeze(0).repeat(Bloc.shape[0],1,1)),dim=2)).unsqueeze(-1).unsqueeze(-1).repeat(1,1,3,3)
+    
+    #the following is to deal with the edge case that the direction of one of the laserbeams is paralel to that of one of the B fields.
+    k=torch.linalgnorm(v,dim=2)
+    k=(k==torch.zeros(k.shape,device=k.device,dtype=k.dtype)).to(k.dtype)
+    k=k.unsqueeze(-1).repeat(1,1,3)*1e-10
+    v=torch.cross(nBloc.unsqueeze(1).repeat(1,len(Environment.laserbeams),1)+k,dirs.unsqueeze(0).repeat(nBloc.shape[0],1,1))
+    k=None
+
+    #theta=(torch.arccos(torch.sum(torch.mul(nBloc.unsqueeze(1).repeat(1,dirs.shape[0],1),tens.z.unsqueeze(0).unsqueeze(0).repeat(Bloc.shape[0],dirs.shape[0],1)),dim=2))-torch.arccos(torch.sum(torch.mul(dirs.unsqueeze(0).repeat(Bloc.shape[0],1,1),tens.z.unsqueeze(0).unsqueeze(0).repeat(Bloc.shape[0],dirs.shape[0],1)),dim=2)))
+    theta=torch.arccos(torch.sum(torch.mul(nBloc.unsqueeze(1).repeat(1,dirs.shape[0],1),dirs.unsqueeze(0).repeat(Bloc.shape[0],1,1)),dim=2))
+    c=torch.cos(theta)
+    s=torch.sin(theta)
+    Wignery=torch.zeros((theta.shape[0],theta.shape[1],3,3),dtype=theta.dtype,device=theta.device)
+    Wignery[:,:,0,0]=1/2*(torch.ones(c.shape,device=c.device,dtype=c.dtype)+c)
+    Wignery[:,:,0,1]=-1/sqrt(2)*s   
+    Wignery[:,:,0,2]=1/2*(torch.ones(c.shape,device=c.device,dtype=c.dtype)-c)
+    Wignery[:,:,1,0]=1/sqrt(2)*s   
+    Wignery[:,:,1,1]=c
+    Wignery[:,:,1,2]=-1/sqrt(2)*s   
+    Wignery[:,:,2,0]=1/2*(torch.ones(c.shape,device=c.device,dtype=c.dtype)-c)
+    Wignery[:,:,2,1]=1/sqrt(2)*s   
+    Wignery[:,:,2,2]=1/2*(torch.ones(c.shape,device=c.device,dtype=c.dtype)+c)
+    
+    Wignerx=torch.linalginv(Wignery)
+
+    eploc=torch.matmul(Wignery,eps)
+    return torch.abs(eploc)
