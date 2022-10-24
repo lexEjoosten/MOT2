@@ -117,7 +117,7 @@ def disttobeam(point,laserbeam):
     return torch.norm(x_0-point-torch.mul(y,(x_0-point))*y,dim=1)
 
 def AHh(x,A):
-    return (torch.matmul(x,torch.diag(tensor([A,A,-2*A],device=x.device,dtype=x.dtype))))
+    return (torch.matmul(x,torch.diag(torch.tensor([A,A,-2*A],device=x.device,dtype=x.dtype))))
 
 '''
     def Veldtun(v):
