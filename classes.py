@@ -211,7 +211,7 @@ class particles:
         levels[:,self.species.slicestart[self.species.lowestlevel]:self.species.sliceend[self.species.lowestlevel]]=1/(2*int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])+1)*torch.ones((positions.shape[0],int(self.species.lowestlevel[self.species.lowestlevel.index("F")+1])))
         self.levels=torch.cat((self.levels,levels))
 
-    def addbyT(self, N,T=300,R=0.01,def_device=vr.def_device):
+    def addbyT(self, N,T=300,R=0.01,def_device=vr.def_device, Tcutoff=15):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
         self.N+=N
         #randomly distribute points over a shell at radius R. 
@@ -224,6 +224,8 @@ class particles:
         v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
+        
+
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
         theta=torch.arcsin(torch.sqrt(torch.zeros((N),device=def_device).uniform_()))
         nx=(torch.outer(x[:,2],torch.tensor([0,1,0],device=def_device))-torch.outer(x[:,1],torch.tensor([0,0,1],device=def_device))).T
@@ -243,7 +245,7 @@ class particles:
 
         
 
-    def timestepadd(self,dt=0.00001 ,T=300,P=3e-7,R=0.01,def_device=vr.def_device):
+    def timestepadd(self,dt=0.00001 ,T=300,P=3e-7,R=0.01,def_device=vr.def_device,Tcutoff=15):
         #produces a cloud of N particles at radius R, as though particles wander into this sphere and come into the simulated surface
         N=dt*4*pi*R**2*P/sqrt(2*pi*self.species.mass*conk*T)
         Nmin=int(N)
@@ -251,9 +253,7 @@ class particles:
             N=Nmin+1
         else:
             N=Nmin
-        self.N+=N
         #randomly distribute points over a shell at radius R. 
-        x=fn.randthreevecs(N,def_device)
         # Need to use the chi4 distribution as we're not interested in all the velocies in the gas chamber(which would be maxwell distribution (chi3)) but
         #  instead only those which pass te boundary, which is effusion, which must be multiplied by v_n, where v_n is the velocity into the  sphere. 
         # This also requires the modification of the direction distribution. But doing this correctly allows for a simplified insertion of particles to the model
@@ -262,6 +262,21 @@ class particles:
         v_therm=sqrt(2*conk*T/self.species.mass)
         #see notes
         vel=chi.rvs(4,size=N,scale=v_therm)*2/pi
+        
+        v_thermcutoff=sqrt(2*conk*Tcutoff/self.species.mass)
+
+        A=vel-v_thermcutoff*np.ones(N,dtype=vel.dtype)
+
+
+
+        A=np.abs(A)+A #zero for anything below the cutoff, non-zero for anything above
+
+        A=(A==np.zeros(N,dtype=A.dtype))
+        
+        vel=vel[A]
+        N=vel.shape[0]
+        self.N+=N
+        x=fn.randthreevecs(N,def_device)
         phi=torch.zeros((N),device=def_device).uniform_(0,2*np.pi)
         theta=torch.arcsin(torch.sqrt(torch.zeros((N),device=def_device).uniform_()))
         nx=(torch.outer(x[:,2],torch.tensor([0,1,0],device=def_device))-torch.outer(x[:,1],torch.tensor([0,0,1],device=def_device))).T

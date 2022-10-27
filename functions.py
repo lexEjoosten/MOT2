@@ -177,16 +177,16 @@ def eploc(x,Environment,def_device=vr.def_device):
         eps[i]=Environment.laserbeams[i].pol
     eps=eps.unsqueeze(-1)
     Bloc=Environment.B(x)
-    nBloc=torch.div(Bloc,torch.linalgnorm(Bloc,dim=1).unsqueeze(1))
+    nBloc=torch.div(Bloc,torch.linalg.norm(Bloc,dim=1).unsqueeze(1))
     v=torch.cross(nBloc.unsqueeze(1).repeat(1,len(Environment.laserbeams),1),dirs.unsqueeze(0).repeat(nBloc.shape[0],1,1))
     
 
     #this calculates the sin(theta) and 1-cos(theta) factors needed for the calculation of the rotation matrix.
-    s=torch.linalgnorm(v,dim=2).unsqueeze(-1).unsqueeze(-1).repeat(1,1,3,3)
+    s=torch.linalg.norm(v,dim=2).unsqueeze(-1).unsqueeze(-1).repeat(1,1,3,3)
     c=(torch.ones((Bloc.shape[0],dirs.shape[0]),device=def_device)-torch.sum(torch.mul(nBloc.unsqueeze(1).repeat(1,dirs.shape[0],1),dirs.unsqueeze(0).repeat(Bloc.shape[0],1,1)),dim=2)).unsqueeze(-1).unsqueeze(-1).repeat(1,1,3,3)
     
     #the following is to deal with the edge case that the direction of one of the laserbeams is paralel to that of one of the B fields.
-    k=torch.linalgnorm(v,dim=2)
+    k=torch.linalg.norm(v,dim=2)
     k=(k==torch.zeros(k.shape,device=k.device,dtype=k.dtype)).to(k.dtype)
     k=k.unsqueeze(-1).repeat(1,1,3)*1e-10
     v=torch.cross(nBloc.unsqueeze(1).repeat(1,len(Environment.laserbeams),1)+k,dirs.unsqueeze(0).repeat(nBloc.shape[0],1,1))
@@ -207,7 +207,7 @@ def eploc(x,Environment,def_device=vr.def_device):
     Wignery[:,:,2,1]=1/sqrt(2)*s   
     Wignery[:,:,2,2]=1/2*(torch.ones(c.shape,device=c.device,dtype=c.dtype)+c)
     
-    Wignerx=torch.linalginv(Wignery)
+    Wignerx=torch.linalg.inv(Wignery)
 
     eploc=torch.matmul(Wignery,eps)
     return torch.abs(eploc)
